@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String   @id @default(uuid())
+  email    String   @unique
+  password String
+  strains  Strain[] @relation("UserStrains")
+  stores   Store[]  @relation("UserStores")
+}
+
+model Store {
+  id      String   @id @default(uuid())
+  name    String
+  strains Strain[] @relation("StoreStrains")
+  users   User[]   @relation("UserStores")
+}
+
+model Strain {
+  id             String           @id @default(uuid())
+  name           String
+  url            String
+  thc            Float
+  weight         String
+  price          String
+  strainType     String
+  stores         Store[]          @relation("StoreStrains")
+  users          User[]           @relation("UserStrains")
+  strainTerpenes StrainTerpene[]
+}
+
+model Terpene {
+  id             String           @id @default(uuid())
+  name           String           @unique
+  description    String
+  strainTerpenes StrainTerpene[]
+}
+
+model StrainTerpene {
+  id         String  @id @default(uuid())
+  strain     Strain  @relation(fields: [strainId], references: [id])
+  strainId   String
+  terpene    Terpene @relation(fields: [terpeneId], references: [id])
+  terpeneId  String
+  percentage Float?
+}

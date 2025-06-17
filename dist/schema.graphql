@@ -1,0 +1,62 @@
+type Query {
+  getStrains: [Strain!]!
+}
+
+type Mutation {
+  createStore(name: String!): Store!
+  signup(email: String!, password: String!): User!
+  login(email: String!, password: String!): User!
+
+  createStrain(
+    name: String!
+    url: String!
+    thc: Float!
+    weight: String!
+    price: String!
+    strainType: String!
+    storeIds: [ID!]!
+    terpeneNames: [String!]!
+    terpenePercentages: [Float!]!
+  ): Strain!
+}
+
+type User {
+  id: ID!
+  email: String!
+  password: String!
+  strains: [Strain!]!
+  stores: [Store!]!
+}
+
+type Store {
+  id: ID!
+  name: String!
+  strains: [Strain!]!
+  users: [User!]!
+}
+
+type Strain {
+  id: ID!
+  name: String!
+  url: String!
+  thc: Float!
+  weight: String!
+  price: String!
+  strainType: String!
+  stores: [Store!]!
+  terpenes: [StrainTerpene!]!
+  users: [User!]!
+}
+
+type Terpene {
+  id: ID!
+  name: String!
+  description: String!
+  strains: [StrainTerpene!]!
+}
+
+type StrainTerpene {
+  id: ID!
+  percentage: Float
+  terpene: Terpene!
+}
