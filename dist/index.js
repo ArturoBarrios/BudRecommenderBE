@@ -115,6 +115,7 @@ router.get("/embed-strains", async (req, res) => {
 router.post("/create-strains", async (req, res) => {
   const { storeName, strains } = req.body;
   console.log(`\u{1F4E5} Creating strains for store: ${storeName}`);
+  console.log(`\u{1F4E6} Strains data: ${JSON.stringify(strains, null, 2)}`);
   try {
     let store = await prisma.store.findFirst({ where: { name: storeName } });
     if (!store) {
@@ -188,6 +189,52 @@ router.post("/create-strains", async (req, res) => {
   } catch (err) {
     console.error("\u274C Error creating strains:", err);
     res.status(500).json({ success: false, error: "Failed to create strains" });
+  }
+});
+router.post("/create-user-strain-preference", async (req, res) => {
+  const {
+    userId,
+    strainId,
+    liked,
+    reason,
+    effectsFelt,
+    symptomRelief
+  } = req.body;
+  console.log(`\u{1F4E5} Creating or updating user strain preference for user ${userId} and strain ${strainId}`);
+  if (!userId || !strainId || liked === void 0) {
+    return res.status(400).json({ success: false, error: "Missing required fields." });
+  }
+  try {
+    const preference = await prisma.userStrain.upsert({
+      where: {
+        userId_strainId: {
+          userId,
+          strainId
+        }
+      },
+      update: {
+        liked,
+        reason,
+        effectsFelt,
+        symptomRelief
+      },
+      create: {
+        user: { connect: { id: userId } },
+        strain: { connect: { id: strainId } },
+        liked,
+        reason,
+        effectsFelt,
+        symptomRelief
+      },
+      include: {
+        user: true,
+        strain: true
+      }
+    });
+    res.status(200).json({ success: true, preference });
+  } catch (err) {
+    console.error("\u274C Error creating or updating user strain preference:", err);
+    res.status(500).json({ success: false, error: "Failed to create or update preference." });
   }
 });
 router.post("/recommend", async (req, res) => {
@@ -376,6 +423,38 @@ var resolvers = {
 
 // src/routes/userAuth.js
 import { Router as Router2 } from "express";
+
+// src/utils/getUserWithPreferences.js
+import { PrismaClient as PrismaClient3 } from "@prisma/client";
+var prisma3 = new PrismaClient3();
+async function getUserWithPreferences(userId) {
+  return await prisma3.user.findUnique({
+    where: { id: userId },
+    include: {
+      strains: {
+        include: {
+          strain: {
+            include: {
+              strainTerpenes: {
+                include: {
+                  terpene: true
+                }
+              },
+              brand: true,
+              strainStores: {
+                include: {
+                  store: true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// src/routes/userAuth.js
 var router2 = Router2();
 router2.post("/signup", async (req, res) => {
   console.log("\u{1F510} User signup attempt:", req.body);
@@ -400,10 +479,12 @@ router2.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await resolvers.Mutation.login(null, { email, password });
+    const fullUser = await getUserWithPreferences(user.id);
     req.session.user = {
-      id: user.id,
-      email: user.email,
-      name: user.name || null
+      id: fullUser.id,
+      email: fullUser.email,
+      preferences: fullUser.strains
+      // can rename on client if needed
     };
     req.session.save(() => {
       res.status(200).json({ success: true, user: req.session.user });
@@ -413,19 +494,24 @@ router2.post("/login", async (req, res) => {
     res.status(401).json({ success: false, error: err.message });
   }
 });
-router2.get("/me", (req, res) => {
-  console.log("\u{1F9EA} SESSION on /auth/me:", req.session);
-  if (req.session.user) {
-    res.json({ success: true, user: req.session.user });
-  } else {
-    res.status(401).json({ success: false, error: "Not authenticated" });
+router2.get("/me", async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ success: false, error: "Not authenticated" });
   }
-});
-router2.post("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("sid");
-    res.json({ success: true });
-  });
+  try {
+    const fullUser = await getUserWithPreferences(req.session.user.id);
+    res.json({
+      success: true,
+      user: {
+        id: fullUser.id,
+        email: fullUser.email,
+        preferences: fullUser.strains
+      }
+    });
+  } catch (err) {
+    console.error("\u274C Error fetching /me:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch user" });
+  }
 });
 var userAuth_default = router2;
 

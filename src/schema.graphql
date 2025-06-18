@@ -6,6 +6,13 @@ type Mutation {
   createStore(name: String!): Store!
   signup(email: String!, password: String!): User!
   login(email: String!, password: String!): User!
+  markStrainPreference(
+    strainId: ID!
+    liked: Boolean!
+    reason: String
+    effectsFelt: [String!]
+    symptomRelief: [String!]
+  ): UserStrain!
 
   createStrain(
     name: String!
@@ -24,9 +31,35 @@ type User {
   id: ID!
   email: String!
   password: String!
-  strains: [Strain!]!
+  strains: [UserStrain!]!
   stores: [Store!]!
 }
+
+type Strain {
+  id: ID!
+  name: String!
+  url: String!
+  thc: Float!
+  weight: String!
+  price: String!
+  strainType: String!
+  strainStores: [StrainStore!]!
+  terpenes: [StrainTerpene!]!
+  users: [UserStrain!]!
+  brand: Brand!
+}
+
+type UserStrain {
+  id: ID!
+  user: User!
+  strain: Strain!
+  liked: Boolean!         
+  reason: String   
+  effectsFelt: [String!]!
+  symptomRelief: [String!]!       
+  createdAt: String!
+}
+
 
 type Brand {
   id: ID!
@@ -41,19 +74,6 @@ type Store {
   users: [User!]!
 }
 
-type Strain {
-  id: ID!
-  name: String!
-  url: String!
-  thc: Float!
-  weight: String!
-  price: String!
-  strainType: String!
-  strainStores: [StrainStore!]!
-  terpenes: [StrainTerpene!]!
-  users: [User!]!
-  brand: Brand!
-}
 
 type StrainStore {
   id: ID!

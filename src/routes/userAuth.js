@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { resolvers } from '../resolvers/resolvers.js';
+import { getUserWithPreferences } from '../utils/getUserWithPreferences.js'
 
 const router = Router();
 
@@ -33,12 +34,13 @@ router.post('/login', async (req, res) => {
 
   try {
     const user = await resolvers.Mutation.login(null, { email, password });
+     const fullUser = await getUserWithPreferences(user.id)
 
     req.session.user = {
-      id: user.id,
-      email: user.email,
-      name: user.name || null,
-    };
+      id: fullUser.id,
+      email: fullUser.email,
+      preferences: fullUser.strains, // can rename on client if needed
+    }
 
     req.session.save(() => {
       res.status(200).json({ success: true, user: req.session.user });
@@ -50,21 +52,26 @@ router.post('/login', async (req, res) => {
 });
 
 
-router.get('/me', (req, res) => {
-  console.log('🧪 SESSION on /auth/me:', req.session);
-
-  if (req.session.user) {
-    res.json({ success: true, user: req.session.user });
-  } else {
-    res.status(401).json({ success: false, error: 'Not authenticated' });
+router.get('/me', async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ success: false, error: 'Not authenticated' })
   }
-});
 
-router.post('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie('sid');
-    res.json({ success: true });
-  });
-});
+  try {
+    const fullUser = await getUserWithPreferences(req.session.user.id)
+
+    res.json({
+      success: true,
+      user: {
+        id: fullUser.id,
+        email: fullUser.email,
+        preferences: fullUser.strains,
+      },
+    })
+  } catch (err) {
+    console.error('❌ Error fetching /me:', err)
+    res.status(500).json({ success: false, error: 'Failed to fetch user' })
+  }
+})
 
 export default router;

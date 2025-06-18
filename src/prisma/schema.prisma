@@ -7,19 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id       String   @id @default(uuid())
-  email    String   @unique
-  password String
-  strains  Strain[] @relation("UserStrains")
-  stores   Store[]  @relation("UserStores")
-}
-
 model Store {
-  id           String         @id @default(uuid())
+  id           String     @id @default(uuid())
   name         String
   strainStores StrainStore[]
-  users        User[]         @relation("UserStores")
+  users        User[]     @relation("UserStores")
 }
 
 model Brand {
@@ -28,19 +20,42 @@ model Brand {
   strains Strain[]
 }
 
+model User {
+  id       String       @id @default(uuid())
+  email    String       @unique
+  password String
+  strains  UserStrain[]
+  stores   Store[]      @relation("UserStores")
+}
+
 model Strain {
-  id             String           @id @default(uuid())
-  name           String           @unique
+  id             String         @id @default(uuid())
+  name           String         @unique
   url            String
   thc            Float
   weight         String[]
   price          String[]
   strainType     String
   strainStores   StrainStore[]
-  users          User[]           @relation("UserStrains")
+  users          UserStrain[]
   strainTerpenes StrainTerpene[]
   brandId        String
-  brand          Brand            @relation(fields: [brandId], references: [id])
+  brand          Brand          @relation(fields: [brandId], references: [id])
+}
+
+model UserStrain {
+  id             String    @id @default(uuid())
+  user           User      @relation(fields: [userId], references: [id])
+  userId         String
+  strain         Strain    @relation(fields: [strainId], references: [id])
+  strainId       String
+  liked          Boolean
+  reason         String?
+  effectsFelt    String[]
+  symptomRelief  String[]
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, strainId])
 }
 
 model StrainStore {

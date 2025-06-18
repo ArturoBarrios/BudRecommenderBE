@@ -21,6 +21,7 @@ router.get('/embed-strains', async (req, res) => {
 router.post('/create-strains', async (req, res) => {
   const { storeName, strains } = req.body;
   console.log(`📥 Creating strains for store: ${storeName}`);
+  console.log(`📦 Strains data: ${JSON.stringify(strains, null, 2)}`);
 
   try {
     let store = await prisma.store.findFirst({ where: { name: storeName } });
@@ -111,6 +112,59 @@ await prisma.strainStore.create({
     res.status(500).json({ success: false, error: 'Failed to create strains' });
   }
 });
+
+router.post('/create-user-strain-preference', async (req, res) => {
+  const {
+    userId,
+    strainId,
+    liked,
+    reason,
+    effectsFelt,
+    symptomRelief
+  } = req.body;
+
+  console.log(`📥 Creating or updating user strain preference for user ${userId} and strain ${strainId}`);
+
+  if (!userId || !strainId || liked === undefined) {
+    return res.status(400).json({ success: false, error: 'Missing required fields.' });
+  }
+
+  try {
+    const preference = await prisma.userStrain.upsert({
+      where: {
+        userId_strainId: {
+          userId,
+          strainId,
+        },
+      },
+      update: {
+        liked,
+        reason,
+        effectsFelt,
+        symptomRelief,
+      },
+      create: {
+        user: { connect: { id: userId } },
+        strain: { connect: { id: strainId } },
+        liked,
+        reason,
+        effectsFelt,
+        symptomRelief,
+      },
+      include: {
+        user: true,
+        strain: true,
+      },
+    });
+
+    res.status(200).json({ success: true, preference });
+  } catch (err) {
+    console.error('❌ Error creating or updating user strain preference:', err);
+    res.status(500).json({ success: false, error: 'Failed to create or update preference.' });
+  }
+});
+
+
 
 
 
