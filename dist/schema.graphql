@@ -11,8 +11,8 @@ type Mutation {
     name: String!
     url: String!
     thc: Float!
-    weight: String!
-    price: String!
+    weight: [String!]!
+    price: [String!]!
     strainType: String!
     storeIds: [ID!]!
     terpeneNames: [String!]!
@@ -28,10 +28,16 @@ type User {
   stores: [Store!]!
 }
 
-type Store {
+type Brand {
   id: ID!
   name: String!
   strains: [Strain!]!
+}
+
+type Store {
+  id: ID!
+  name: String!
+  strainStores: [StrainStore!]!
   users: [User!]!
 }
 
@@ -43,9 +49,17 @@ type Strain {
   weight: String!
   price: String!
   strainType: String!
-  stores: [Store!]!
+  strainStores: [StrainStore!]!
   terpenes: [StrainTerpene!]!
   users: [User!]!
+  brand: Brand!
+}
+
+type StrainStore {
+  id: ID!
+  strain: Strain!
+  store: Store!
+  offer: String
 }
 
 type Terpene {

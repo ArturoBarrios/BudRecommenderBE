@@ -12,12 +12,32 @@ import strainsRoutes from './routes/strains.js';
 import { resolvers } from './resolvers/resolvers.js';
 import path from 'path';
 import userAuthRouter from '../src/routes/userAuth.js';
+import session from 'express-session';
 
 const app = express();
 const PORT = 4000;
 
+
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000', // adjust if Nuxt is hosted elsewhere
+  credentials: true
+}));
+app.use(
+  session({
+    name: 'sid',
+    secret: process.env.SESSION_SECRET || 'your-super-secret-with-32-chars',
+    resave: true, // <--- force session save on every response
+    saveUninitialized: true, // <--- create session even if nothing set yet
+    cookie: {
+      httpOnly: true,
+      secure: false, // true in production w/ HTTPS
+      maxAge: 1000 * 60 * 60 * 24, // 1 day
+    },
+  })
+);
+
 app.use(express.json());
 app.use('/strains', strainsRoutes);
 app.use('/auth', userAuthRouter);

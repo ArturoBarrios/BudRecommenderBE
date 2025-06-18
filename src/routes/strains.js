@@ -32,49 +32,77 @@ router.post('/create-strains', async (req, res) => {
     const createdStrains = [];
 
     for (const s of strains) {
-      console.log(`🌿 Creating strain: ${s.name}`);
-      const strain = await prisma.strain.create({
+  console.log(`🌿 Creating strain: ${s.name}`);
+
+  if (!s.brand || typeof s.brand !== "string") {
+    throw new Error(`Missing or invalid brand for strain: ${s.name}`);
+  }
+
+  const brandName = s.brand.trim();
+  let brand = await prisma.brand.findUnique({ where: { name: brandName } });
+
+  if (!brand) {
+    console.log('🏷️ Creating new brand:', brandName);
+    brand = await prisma.brand.create({
+      data: { name: brandName },
+    });
+  }
+
+let strain = await prisma.strain.findUnique({ where: { name: s.name } });
+if (!strain) {
+  strain = await prisma.strain.create({
+    data: {
+      name: s.name,
+      url: s.url,
+      thc: parseFloat(s.thc),
+      weight: Array.isArray(s.weight) ? s.weight : [s.weight],
+      price: Array.isArray(s.price) ? s.price : [s.price],
+      strainType: s.strain_type,
+      brand: {
+        connect: { id: brand.id },
+      },
+    },
+  });
+}
+
+await prisma.strainStore.create({
+  data: {
+    strainId: strain.id,
+    storeId: store.id,
+    offer: s.offer || null,
+  },
+});
+
+
+  for (const [terpeneName, raw] of Object.entries(s.terpenes ?? {})) {
+    console.log(`🧪 Processing terpene: ${terpeneName}`);
+    let terpene = await prisma.terpene.findUnique({ where: { name: terpeneName } });
+    if (!terpene) {
+      console.log('🆕 Creating new terpene:', terpeneName);
+      terpene = await prisma.terpene.create({
         data: {
-          name: s.name,
-          url: s.url,
-          thc: parseFloat(s.thc),
-          weight: s.weight,
-          price: s.price,
-          strainType: s.strain_type,
-          stores: {
-            connect: [{ id: store.id }],
-          },
+          name: terpeneName,
+          description: '',
         },
       });
-
-      for (const [terpeneName, raw] of Object.entries(s.terpenes ?? {})) {
-        console.log(`🧪 Processing terpene: ${terpeneName}`);
-        let terpene = await prisma.terpene.findUnique({ where: { name: terpeneName } });
-        if (!terpene) {
-          console.log('🆕 Creating new terpene:', terpeneName);
-          terpene = await prisma.terpene.create({
-            data: {
-              name: terpeneName,
-              description: '',
-            },
-          });
-        }
-
-        const clean = raw.toLowerCase().replace('%', '').replace('mg/g', '').trim();
-        const isMg = raw.toLowerCase().includes('mg/g');
-        const percentage = parseFloat(clean);
-
-        await prisma.strainTerpene.create({
-          data: {
-            strainId: strain.id,
-            terpeneId: terpene.id,
-            percentage: isMg ? percentage / 10 : percentage,
-          },
-        });
-      }
-
-      createdStrains.push(strain);
     }
+
+    const clean = raw.toLowerCase().replace('%', '').replace('mg/g', '').trim();
+    const isMg = raw.toLowerCase().includes('mg/g');
+    const percentage = parseFloat(clean);
+
+    await prisma.strainTerpene.create({
+      data: {
+        strainId: strain.id,
+        terpeneId: terpene.id,
+        percentage: isMg ? percentage / 10 : percentage,
+      },
+    });
+  }
+
+  createdStrains.push(strain);
+}
+
 
     console.log(`✅ Created ${createdStrains.length} strains.`);
     res.status(201).json({ success: true, strains: createdStrains });
@@ -83,6 +111,8 @@ router.post('/create-strains', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to create strains' });
   }
 });
+
+
 
 router.post('/recommend', async (req, res) => {
   try {
@@ -125,36 +155,50 @@ router.get('/get-strains', async (req, res) => {
   try {
     console.log('📡 Fetching strains from database...');
     const strains = await prisma.strain.findMany({
+  include: {
+    brand: {
+      select: { id: true, name: true },
+    },
+    strainTerpenes: {
       include: {
-        stores: {
-          select: { id: true, name: true },
-        },
-        strainTerpenes: {
-          include: {
-            terpene: {
-              select: { id: true, name: true, description: true },
-            },
-          },
+        terpene: {
+          select: { id: true, name: true, description: true },
         },
       },
-    });
+    },
+    strainStores: {
+      include: {
+        store: {
+          select: { id: true, name: true },
+        },
+      },
+    },
+  },
+});
+
 
     const formatted = strains.map((s) => ({
-      id: s.id,
-      name: s.name,
-      url: s.url,
-      thc: s.thc,
-      weight: s.weight,
-      price: s.price,
-      strainType: s.strainType,
-      stores: s.stores,
-      terpenes: s.strainTerpenes.map((st) => ({
-        id: st.terpene.id,
-        name: st.terpene.name,
-        description: st.terpene.description,
-        percentage: st.percentage,
-      })),
-    }));
+  id: s.id,
+  name: s.name,
+  url: s.url,
+  thc: s.thc,
+  weight: s.weight,
+  price: s.price,
+  strainType: s.strainType,
+  brand: s.brand,
+  terpenes: s.strainTerpenes.map((st) => ({
+    id: st.terpene.id,
+    name: st.terpene.name,
+    description: st.terpene.description,
+    percentage: st.percentage,
+  })),
+  stores: s.strainStores.map((ss) => ({
+    id: ss.store.id,
+    name: ss.store.name,
+    offer: ss.offer,
+  })),
+}));
+
 
     console.log(`✅ Returned ${formatted.length} strains.`);
     res.json(formatted);

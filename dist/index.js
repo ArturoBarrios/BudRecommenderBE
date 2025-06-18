@@ -124,17 +124,38 @@ router.post("/create-strains", async (req, res) => {
     const createdStrains = [];
     for (const s of strains) {
       console.log(`\u{1F33F} Creating strain: ${s.name}`);
-      const strain = await prisma.strain.create({
-        data: {
-          name: s.name,
-          url: s.url,
-          thc: parseFloat(s.thc),
-          weight: s.weight,
-          price: s.price,
-          strainType: s.strain_type,
-          stores: {
-            connect: [{ id: store.id }]
+      if (!s.brand || typeof s.brand !== "string") {
+        throw new Error(`Missing or invalid brand for strain: ${s.name}`);
+      }
+      const brandName = s.brand.trim();
+      let brand = await prisma.brand.findUnique({ where: { name: brandName } });
+      if (!brand) {
+        console.log("\u{1F3F7}\uFE0F Creating new brand:", brandName);
+        brand = await prisma.brand.create({
+          data: { name: brandName }
+        });
+      }
+      let strain = await prisma.strain.findUnique({ where: { name: s.name } });
+      if (!strain) {
+        strain = await prisma.strain.create({
+          data: {
+            name: s.name,
+            url: s.url,
+            thc: parseFloat(s.thc),
+            weight: Array.isArray(s.weight) ? s.weight : [s.weight],
+            price: Array.isArray(s.price) ? s.price : [s.price],
+            strainType: s.strain_type,
+            brand: {
+              connect: { id: brand.id }
+            }
           }
+        });
+      }
+      await prisma.strainStore.create({
+        data: {
+          strainId: strain.id,
+          storeId: store.id,
+          offer: s.offer || null
         }
       });
       for (const [terpeneName, raw] of Object.entries(s.terpenes ?? {})) {
@@ -204,13 +225,20 @@ router.get("/get-strains", async (req, res) => {
     console.log("\u{1F4E1} Fetching strains from database...");
     const strains = await prisma.strain.findMany({
       include: {
-        stores: {
+        brand: {
           select: { id: true, name: true }
         },
         strainTerpenes: {
           include: {
             terpene: {
               select: { id: true, name: true, description: true }
+            }
+          }
+        },
+        strainStores: {
+          include: {
+            store: {
+              select: { id: true, name: true }
             }
           }
         }
@@ -224,12 +252,17 @@ router.get("/get-strains", async (req, res) => {
       weight: s.weight,
       price: s.price,
       strainType: s.strainType,
-      stores: s.stores,
+      brand: s.brand,
       terpenes: s.strainTerpenes.map((st) => ({
         id: st.terpene.id,
         name: st.terpene.name,
         description: st.terpene.description,
         percentage: st.percentage
+      })),
+      stores: s.strainStores.map((ss) => ({
+        id: ss.store.id,
+        name: ss.store.name,
+        offer: ss.offer
       }))
     }));
     console.log(`\u2705 Returned ${formatted.length} strains.`);
@@ -345,10 +378,19 @@ var resolvers = {
 import { Router as Router2 } from "express";
 var router2 = Router2();
 router2.post("/signup", async (req, res) => {
+  console.log("\u{1F510} User signup attempt:", req.body);
   const { email, password } = req.body;
   try {
     const user = await resolvers.Mutation.signup(null, { email, password });
-    res.status(201).json({ success: true, user });
+    console.log("\u2705 User signed up successfully:", user.email);
+    req.session.user = {
+      id: user.id,
+      email: user.email,
+      name: user.name || null
+    };
+    req.session.save(() => {
+      res.status(201).json({ success: true, user: req.session.user });
+    });
   } catch (err) {
     console.error("\u274C Signup error:", err.message);
     res.status(400).json({ success: false, error: err.message });
@@ -358,19 +400,62 @@ router2.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await resolvers.Mutation.login(null, { email, password });
-    res.status(200).json({ success: true, user });
+    req.session.user = {
+      id: user.id,
+      email: user.email,
+      name: user.name || null
+    };
+    req.session.save(() => {
+      res.status(200).json({ success: true, user: req.session.user });
+    });
   } catch (err) {
     console.error("\u274C Login error:", err.message);
     res.status(401).json({ success: false, error: err.message });
   }
 });
+router2.get("/me", (req, res) => {
+  console.log("\u{1F9EA} SESSION on /auth/me:", req.session);
+  if (req.session.user) {
+    res.json({ success: true, user: req.session.user });
+  } else {
+    res.status(401).json({ success: false, error: "Not authenticated" });
+  }
+});
+router2.post("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("sid");
+    res.json({ success: true });
+  });
+});
 var userAuth_default = router2;
 
 // src/index.ts
+import session from "express-session";
 dotenv.config();
 var app = express();
 var PORT = 4e3;
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:3000",
+  // adjust if Nuxt is hosted elsewhere
+  credentials: true
+}));
+app.use(
+  session({
+    name: "sid",
+    secret: process.env.SESSION_SECRET || "your-super-secret-with-32-chars",
+    resave: true,
+    // <--- force session save on every response
+    saveUninitialized: true,
+    // <--- create session even if nothing set yet
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      // true in production w/ HTTPS
+      maxAge: 1e3 * 60 * 60 * 24
+      // 1 day
+    }
+  })
+);
 app.use(express.json());
 app.use("/strains", strains_default);
 app.use("/auth", userAuth_default);

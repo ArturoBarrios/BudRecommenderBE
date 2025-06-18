@@ -16,23 +16,40 @@ model User {
 }
 
 model Store {
+  id           String         @id @default(uuid())
+  name         String
+  strainStores StrainStore[]
+  users        User[]         @relation("UserStores")
+}
+
+model Brand {
   id      String   @id @default(uuid())
-  name    String
-  strains Strain[] @relation("StoreStrains")
-  users   User[]   @relation("UserStores")
+  name    String   @unique
+  strains Strain[]
 }
 
 model Strain {
   id             String           @id @default(uuid())
-  name           String
+  name           String           @unique
   url            String
   thc            Float
-  weight         String
-  price          String
+  weight         String[]
+  price          String[]
   strainType     String
-  stores         Store[]          @relation("StoreStrains")
+  strainStores   StrainStore[]
   users          User[]           @relation("UserStrains")
   strainTerpenes StrainTerpene[]
+  brandId        String
+  brand          Brand            @relation(fields: [brandId], references: [id])
+}
+
+model StrainStore {
+  id        String  @id @default(uuid())
+  strain    Strain  @relation(fields: [strainId], references: [id])
+  strainId  String
+  store     Store   @relation(fields: [storeId], references: [id])
+  storeId   String
+  offer     String?
 }
 
 model Terpene {
