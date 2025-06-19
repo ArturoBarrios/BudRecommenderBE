@@ -12,6 +12,7 @@ model Store {
   name         String
   strainStores StrainStore[]
   users        User[]     @relation("UserStores")
+  lastScraped  String?
 }
 
 model Brand {
@@ -65,6 +66,7 @@ model StrainStore {
   store     Store   @relation(fields: [storeId], references: [id])
   storeId   String
   offer     String?
+  lastScraped  String?
 }
 
 model Terpene {

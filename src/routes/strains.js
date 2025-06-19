@@ -18,6 +18,8 @@ router.get('/embed-strains', async (req, res) => {
   }
 });
 
+// routes/strain.ts
+
 router.post('/create-strains', async (req, res) => {
   const { storeName, strains } = req.body;
   console.log(`📥 Creating strains for store: ${storeName}`);
@@ -47,15 +49,30 @@ router.post('/create-strains', async (req, res) => {
         brand = await prisma.brand.create({ data: { name: brandName } });
       }
 
+      const weightArray = Array.isArray(s.weights)
+        ? s.weights
+        : s.weight
+        ? [s.weight]
+        : [];
+
+      const priceArray = Array.isArray(s.prices)
+        ? s.prices
+        : s.price
+        ? [s.price]
+        : [];
+
+      const thc = s.thc ? parseFloat(s.thc) : null;
+
       let strain = await prisma.strain.findUnique({ where: { name: s.name } });
+
       if (!strain) {
         strain = await prisma.strain.create({
           data: {
             name: s.name,
             url: s.url,
-            thc: parseFloat(s.thc),
-            weight: Array.isArray(s.weight) ? s.weight : [s.weight],
-            price: Array.isArray(s.price) ? s.price : [s.price],
+            thc,
+            weight: weightArray,
+            price: priceArray,
             strainType: s.strain_type,
             brand: {
               connect: { id: brand.id },
@@ -119,6 +136,7 @@ router.post('/create-strains', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to create strains' });
   }
 });
+
 
 
 router.post('/create-user-strain-preference', async (req, res) => {
