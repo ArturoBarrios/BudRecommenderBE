@@ -132,9 +132,7 @@ router.post("/create-strains", async (req, res) => {
       let brand = await prisma.brand.findUnique({ where: { name: brandName } });
       if (!brand) {
         console.log("\u{1F3F7}\uFE0F Creating new brand:", brandName);
-        brand = await prisma.brand.create({
-          data: { name: brandName }
-        });
+        brand = await prisma.brand.create({ data: { name: brandName } });
       }
       let strain = await prisma.strain.findUnique({ where: { name: s.name } });
       if (!strain) {
@@ -174,11 +172,21 @@ router.post("/create-strains", async (req, res) => {
         const clean = raw.toLowerCase().replace("%", "").replace("mg/g", "").trim();
         const isMg = raw.toLowerCase().includes("mg/g");
         const percentage = parseFloat(clean);
-        await prisma.strainTerpene.create({
-          data: {
+        const finalPercentage = isMg ? percentage / 10 : percentage;
+        await prisma.strainTerpene.upsert({
+          where: {
+            strainId_terpeneId: {
+              strainId: strain.id,
+              terpeneId: terpene.id
+            }
+          },
+          update: {
+            percentage: finalPercentage
+          },
+          create: {
             strainId: strain.id,
             terpeneId: terpene.id,
-            percentage: isMg ? percentage / 10 : percentage
+            percentage: finalPercentage
           }
         });
       }
@@ -512,6 +520,16 @@ router2.get("/me", async (req, res) => {
     console.error("\u274C Error fetching /me:", err);
     res.status(500).json({ success: false, error: "Failed to fetch user" });
   }
+});
+router2.post("/logout", async (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("\u274C Logout error:", err);
+      return res.status(500).json({ success: false, error: "Logout failed" });
+    }
+    res.clearCookie("connect.sid");
+    res.json({ success: true });
+  });
 });
 var userAuth_default = router2;
 

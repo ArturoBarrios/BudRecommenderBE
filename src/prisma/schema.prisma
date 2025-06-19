@@ -81,4 +81,6 @@ model StrainTerpene {
   terpene    Terpene @relation(fields: [terpeneId], references: [id])
   terpeneId  String
   percentage Float?
+
+  @@unique([strainId, terpeneId])
 }

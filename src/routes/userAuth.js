@@ -74,4 +74,15 @@ router.get('/me', async (req, res) => {
   }
 })
 
+router.post('/logout', async (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      console.error('❌ Logout error:', err)
+      return res.status(500).json({ success: false, error: 'Logout failed' })
+    }
+    res.clearCookie('connect.sid')
+    res.json({ success: true })
+  })
+})
+
 export default router;

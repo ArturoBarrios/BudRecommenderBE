@@ -93,4 +93,6 @@ type StrainTerpene {
   id: ID!
   percentage: Float
   terpene: Terpene!
+  strain: Strain!
+  
 }

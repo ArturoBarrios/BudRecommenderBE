@@ -33,77 +33,84 @@ router.post('/create-strains', async (req, res) => {
     const createdStrains = [];
 
     for (const s of strains) {
-  console.log(`🌿 Creating strain: ${s.name}`);
+      console.log(`🌿 Creating strain: ${s.name}`);
 
-  if (!s.brand || typeof s.brand !== "string") {
-    throw new Error(`Missing or invalid brand for strain: ${s.name}`);
-  }
+      if (!s.brand || typeof s.brand !== 'string') {
+        throw new Error(`Missing or invalid brand for strain: ${s.name}`);
+      }
 
-  const brandName = s.brand.trim();
-  let brand = await prisma.brand.findUnique({ where: { name: brandName } });
+      const brandName = s.brand.trim();
+      let brand = await prisma.brand.findUnique({ where: { name: brandName } });
 
-  if (!brand) {
-    console.log('🏷️ Creating new brand:', brandName);
-    brand = await prisma.brand.create({
-      data: { name: brandName },
-    });
-  }
+      if (!brand) {
+        console.log('🏷️ Creating new brand:', brandName);
+        brand = await prisma.brand.create({ data: { name: brandName } });
+      }
 
-let strain = await prisma.strain.findUnique({ where: { name: s.name } });
-if (!strain) {
-  strain = await prisma.strain.create({
-    data: {
-      name: s.name,
-      url: s.url,
-      thc: parseFloat(s.thc),
-      weight: Array.isArray(s.weight) ? s.weight : [s.weight],
-      price: Array.isArray(s.price) ? s.price : [s.price],
-      strainType: s.strain_type,
-      brand: {
-        connect: { id: brand.id },
-      },
-    },
-  });
-}
+      let strain = await prisma.strain.findUnique({ where: { name: s.name } });
+      if (!strain) {
+        strain = await prisma.strain.create({
+          data: {
+            name: s.name,
+            url: s.url,
+            thc: parseFloat(s.thc),
+            weight: Array.isArray(s.weight) ? s.weight : [s.weight],
+            price: Array.isArray(s.price) ? s.price : [s.price],
+            strainType: s.strain_type,
+            brand: {
+              connect: { id: brand.id },
+            },
+          },
+        });
+      }
 
-await prisma.strainStore.create({
-  data: {
-    strainId: strain.id,
-    storeId: store.id,
-    offer: s.offer || null,
-  },
-});
-
-
-  for (const [terpeneName, raw] of Object.entries(s.terpenes ?? {})) {
-    console.log(`🧪 Processing terpene: ${terpeneName}`);
-    let terpene = await prisma.terpene.findUnique({ where: { name: terpeneName } });
-    if (!terpene) {
-      console.log('🆕 Creating new terpene:', terpeneName);
-      terpene = await prisma.terpene.create({
+      await prisma.strainStore.create({
         data: {
-          name: terpeneName,
-          description: '',
+          strainId: strain.id,
+          storeId: store.id,
+          offer: s.offer || null,
         },
       });
+
+      for (const [terpeneName, raw] of Object.entries(s.terpenes ?? {})) {
+        console.log(`🧪 Processing terpene: ${terpeneName}`);
+
+        let terpene = await prisma.terpene.findUnique({ where: { name: terpeneName } });
+        if (!terpene) {
+          console.log('🆕 Creating new terpene:', terpeneName);
+          terpene = await prisma.terpene.create({
+            data: {
+              name: terpeneName,
+              description: '',
+            },
+          });
+        }
+
+        const clean = raw.toLowerCase().replace('%', '').replace('mg/g', '').trim();
+        const isMg = raw.toLowerCase().includes('mg/g');
+        const percentage = parseFloat(clean);
+        const finalPercentage = isMg ? percentage / 10 : percentage;
+
+        await prisma.strainTerpene.upsert({
+          where: {
+            strainId_terpeneId: {
+              strainId: strain.id,
+              terpeneId: terpene.id,
+            },
+          },
+          update: {
+            percentage: finalPercentage,
+          },
+          create: {
+            strainId: strain.id,
+            terpeneId: terpene.id,
+            percentage: finalPercentage,
+          },
+        });
+      }
+
+      createdStrains.push(strain);
     }
-
-    const clean = raw.toLowerCase().replace('%', '').replace('mg/g', '').trim();
-    const isMg = raw.toLowerCase().includes('mg/g');
-    const percentage = parseFloat(clean);
-
-    await prisma.strainTerpene.create({
-      data: {
-        strainId: strain.id,
-        terpeneId: terpene.id,
-        percentage: isMg ? percentage / 10 : percentage,
-      },
-    });
-  }
-
-  createdStrains.push(strain);
-}
-
 
     console.log(`✅ Created ${createdStrains.length} strains.`);
     res.status(201).json({ success: true, strains: createdStrains });
@@ -112,6 +119,7 @@ await prisma.strainStore.create({
     res.status(500).json({ success: false, error: 'Failed to create strains' });
   }
 });
+
 
 router.post('/create-user-strain-preference', async (req, res) => {
   const {
