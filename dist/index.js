@@ -23,9 +23,14 @@ function cosineSim(a, b) {
   const magB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
   return dot / (magA * magB);
 }
-function getTopMatches(queryEmbedding, k = 5) {
+function getTopMatches(queryEmbedding, k = 5, filters = {}) {
   const embeddedStrains = JSON.parse(fs.readFileSync("./embeddedStrains.json", "utf-8"));
-  const scored = embeddedStrains.map((strain) => ({
+  const filtered = embeddedStrains.filter((strain) => {
+    const prices = Array.isArray(strain.price) ? strain.price.map(parseFloat) : typeof strain.price === "string" ? [parseFloat(strain.price)] : [];
+    const minPrice = Math.min(...prices);
+    return (!filters.strainTypes || filters.strainTypes.includes(strain.strainType.toLowerCase())) && (!filters.minTHC || strain.thc >= filters.minTHC) && (!filters.maxTHC || strain.thc <= filters.maxTHC) && (!filters.maxPrice || !isNaN(minPrice) && minPrice <= filters.maxPrice) && (!filters.weights || filters.weights.some((w) => strain.weight.includes(w))) && (!filters.brands || filters.brands.includes(strain.brand?.name)) && (!filters.preferredTerpenes || strain.terpenes?.some((t) => filters.preferredTerpenes.includes(t.terpene.name))) && (!filters.dislikedStrains || !filters.dislikedStrains.includes(strain.id));
+  });
+  const scored = filtered.map((strain) => ({
     ...strain,
     similarity: cosineSim(queryEmbedding, strain.embedding)
   }));
@@ -34,23 +39,34 @@ function getTopMatches(queryEmbedding, k = 5) {
 
 // src/services/recommendStrains.js
 var openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-async function recommendStrains(userQuery) {
+async function recommendStrains(userQuery, filters = {}) {
   console.log("\u{1F916} Starting recommendation process...");
   console.log(`\u{1F4DD} User query: "${userQuery}"`);
+  console.log("\u{1F4E6} Filters:", filters);
   const embeddingRes = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: userQuery
   });
   console.log("\u{1F9E0} Embedding generated.");
   const queryEmbedding = embeddingRes.data[0].embedding;
-  const topStrains = getTopMatches(queryEmbedding, 5);
+  const topStrains = getTopMatches(queryEmbedding, 5, filters);
   console.log("\u{1F33F} Top matching strains:");
   topStrains.forEach((s, i) => {
     console.log(`  ${i + 1}. ${s.name} - ${s.strainType}, ${s.thc}% THC, ${s.weight}, ${s.price}`);
   });
   const prompt = `
 A user wants cannabis for: "${userQuery}".
-Here are some strains that might match:
+
+Preferences:
+- Strain types: ${filters.strainTypes?.join(", ") || "any"}
+- Max price: $${filters.maxPrice || "any"}
+- THC: ${filters.minTHC || "any"}% to ${filters.maxTHC || "any"}%
+- Preferred terpenes: ${filters.preferredTerpenes?.join(", ") || "none"}
+- Preferred weights: ${filters.weights?.join(", ") || "any"}
+- Favorite strains: ${filters.likedStrains?.join(", ") || "none"}
+- Disliked strains: ${filters.dislikedStrains?.join(", ") || "none"}
+
+Here are the top-matching strains:
 
 ${topStrains.map(
     (s, i) => `${i + 1}. ${s.name} - ${s.strainType}, ${s.thc}% THC, ${s.weight}, ${s.price}`
@@ -82,16 +98,31 @@ async function embedStrainsFromAPI() {
   const res = await fetch("http://localhost:4000/strains/get-strains");
   const strains = await res.json();
   const embedded = [];
-  for (const strain of strains) {
-    const text = `${strain.name}, ${strain.strainType}, ${strain.thc}% THC, ${strain.weight}, ${strain.price}`;
-    const embeddingRes = await openai2.embeddings.create({
-      model: "text-embedding-3-small",
-      input: text
-    });
-    embedded.push({
-      ...strain,
-      embedding: embeddingRes.data[0].embedding
-    });
+  console.log(`\u{1F50D} Total strains fetched: ${strains.length}`);
+  for (const [index, strain] of strains.entries()) {
+    if (!strain) {
+      console.warn(`\u26A0\uFE0F Skipping undefined strain at index ${index}`);
+      continue;
+    }
+    if (!strain.name) {
+      console.warn(`\u26A0\uFE0F Missing strain name at index ${index}`, strain);
+      continue;
+    }
+    console.log(`\u{1F4CC} Embedding strain ${index + 1}/${strains.length}: ${strain.name}`);
+    try {
+      const text = `${strain.name}, ${strain.strainType}, ${strain.thc}% THC, weights: ${strain.weight}, prices: ${strain.price}, brand: ${strain.brand?.name}, terpenes: ${Array.isArray(strain.terpenes) ? strain.terpenes.map((t) => t?.name || "unknown").join(", ") : "none"}`;
+      const embeddingRes = await openai2.embeddings.create({
+        model: "text-embedding-3-small",
+        input: text
+      });
+      embedded.push({
+        ...strain,
+        embedding: embeddingRes.data[0].embedding
+      });
+    } catch (embedErr) {
+      console.error(`\u274C Error embedding strain at index ${index}:`, strain);
+      console.error(embedErr);
+    }
     await new Promise((r) => setTimeout(r, 100));
   }
   fs2.writeFileSync("./embeddedStrains.json", JSON.stringify(embedded, null, 2));
@@ -134,15 +165,18 @@ router.post("/create-strains", async (req, res) => {
         console.log("\u{1F3F7}\uFE0F Creating new brand:", brandName);
         brand = await prisma.brand.create({ data: { name: brandName } });
       }
+      const weightArray = Array.isArray(s.weights) ? s.weights : s.weight ? [s.weight] : [];
+      const priceArray = Array.isArray(s.prices) ? s.prices : s.price ? [s.price] : [];
+      const thc = s.thc ? parseFloat(s.thc) : null;
       let strain = await prisma.strain.findUnique({ where: { name: s.name } });
       if (!strain) {
         strain = await prisma.strain.create({
           data: {
             name: s.name,
             url: s.url,
-            thc: parseFloat(s.thc),
-            weight: Array.isArray(s.weight) ? s.weight : [s.weight],
-            price: Array.isArray(s.price) ? s.price : [s.price],
+            thc,
+            weight: weightArray,
+            price: priceArray,
             strainType: s.strain_type,
             brand: {
               connect: { id: brand.id }
@@ -247,7 +281,18 @@ router.post("/create-user-strain-preference", async (req, res) => {
 });
 router.post("/recommend", async (req, res) => {
   try {
-    const { strainType, thcTier, priceTier, weight, mood, text } = req.body;
+    const {
+      strainType,
+      thcTier,
+      priceTier,
+      weight,
+      mood,
+      text,
+      preferredTerpenes,
+      brands,
+      likedStrains,
+      dislikedStrains
+    } = req.body;
     const parts = [];
     if (strainType) parts.push(`a ${strainType}`);
     if (thcTier) {
@@ -264,8 +309,18 @@ router.post("/recommend", async (req, res) => {
     if (mood) parts.push(`for a ${mood} mood`);
     if (text) parts.push(text);
     const userQuery = `I'm looking for ${parts.join(", ")}`;
-    console.log(`\u{1F916} Recommending strains for query: "${userQuery}"`);
-    const recommendations = await recommendStrains(userQuery);
+    const filters = {
+      strainTypes: strainType ? [strainType.toLowerCase()] : void 0,
+      minTHC: thcTier === "high" ? 20 : thcTier === "mid" ? 10 : void 0,
+      maxTHC: thcTier === "low" ? 10 : thcTier === "mid" ? 20 : void 0,
+      maxPrice: priceTier === "low" ? 30 : priceTier === "mid" ? 60 : void 0,
+      weights: weight ? [weight] : void 0,
+      preferredTerpenes,
+      brands,
+      likedStrains,
+      dislikedStrains
+    };
+    const recommendations = await recommendStrains(userQuery, filters);
     res.json({
       success: true,
       recommendations

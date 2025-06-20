@@ -196,7 +196,18 @@ router.post('/create-user-strain-preference', async (req, res) => {
 
 router.post('/recommend', async (req, res) => {
   try {
-    const { strainType, thcTier, priceTier, weight, mood, text } = req.body;
+    const {
+      strainType,
+      thcTier,
+      priceTier,
+      weight,
+      mood,
+      text,
+      preferredTerpenes,
+      brands,
+      likedStrains,
+      dislikedStrains,
+    } = req.body;
 
     const parts = [];
 
@@ -217,8 +228,19 @@ router.post('/recommend', async (req, res) => {
 
     const userQuery = `I'm looking for ${parts.join(', ')}`;
 
-    console.log(`🤖 Recommending strains for query: "${userQuery}"`);
-    const recommendations = await recommendStrains(userQuery);
+    const filters = {
+      strainTypes: strainType ? [strainType.toLowerCase()] : undefined,
+      minTHC: thcTier === 'high' ? 20 : thcTier === 'mid' ? 10 : undefined,
+      maxTHC: thcTier === 'low' ? 10 : thcTier === 'mid' ? 20 : undefined,
+      maxPrice: priceTier === 'low' ? 30 : priceTier === 'mid' ? 60 : undefined,
+      weights: weight ? [weight] : undefined,
+      preferredTerpenes,
+      brands,
+      likedStrains,
+      dislikedStrains,
+    };
+
+    const recommendations = await recommendStrains(userQuery, filters);
 
     res.json({
       success: true,
@@ -229,6 +251,7 @@ router.post('/recommend', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to fetch recommendations' });
   }
 });
+
 
 
 router.get('/get-strains', async (req, res) => {

@@ -73,6 +73,8 @@ type Store {
   strainStores: [StrainStore!]!
   users: [User!]!
   lastScraped: String
+  address: String
+  url: String
 }
 
 
@@ -81,6 +83,7 @@ type StrainStore {
   strain: Strain!
   store: Store!
   offer: String
+  url: String
 }
 
 type Terpene {

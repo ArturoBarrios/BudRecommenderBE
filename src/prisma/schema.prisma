@@ -13,6 +13,8 @@ model Store {
   strainStores StrainStore[]
   users        User[]     @relation("UserStores")
   lastScraped  String?
+  address      String?
+  url          String?
 }
 
 model Brand {
@@ -67,6 +69,7 @@ model StrainStore {
   storeId   String
   offer     String?
   lastScraped  String?
+  url       String?
 }
 
 model Terpene {
